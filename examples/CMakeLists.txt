@@ -8,5 +8,6 @@ include_directories(../include/ringbuffer/include)
 add_executable(osc-host osc-host.cpp)
 target_link_libraries(osc-host dl spa)
 add_library(osc-plugin SHARED osc-plugin.cpp)
+add_library(gain SHARED gain.cpp)
 
 add_test(simple-host ./osc-host libosc-plugin.so)

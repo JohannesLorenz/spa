@@ -18,9 +18,8 @@
 /*************************************************************************/
 
 /**
-	@file osc-plugin.cpp
-	a simple example gain plugin
-	less than 150 LOC, including license and metadata
+	@file gain.cpp
+	a gain plugin for practical use
 */
 
 #include <cstring>
@@ -29,108 +28,81 @@
 
 #include <spa/audio.h>
 
-class example_plugin : public spa::plugin
+class gain_effect : public spa::plugin
 {
-	//! ports can be extended, this is being hidden from the source
-	struct buffersize_port : public spa::audio::buffersize
-	{
-		int some_extra_value;
-		buffersize_port() : some_extra_value(0) {}
-	};
-	//! useless buffer, just for demonstration
-	std::vector<float> out_buffer_l, out_buffer_r;
-
 public:
 	void run() override
 	{
-		while(osc_in.read_msg())
+		for(unsigned i = 0; i < samplecount; ++i)
 		{
-			if(!strcmp(osc_in.path(), "/gain"))
-			{
-				spa::audio::assert_types_are("/gain",
-					"f", osc_in.types());
-				gain = osc_in.arg(0).f;
-			} else {
-				std::cerr << "warning: unsupported "
-					"OSC string \"" << osc_in.path()
-					<< "\", ignoring...";
-			}
+			out.left[i] = gain * in.left[i];
+			out.right[i] = gain * in.right[i];
 		}
-
-		for(unsigned i = 0; i < buffersize; ++i)
-		{
-			out_buffer_l[i] = gain * in.left[i];
-			out_buffer_r[i] = gain * in.right[i];
-		}
-
-		memcpy(out.left, out_buffer_l.data(), buffersize * sizeof(out.left[0]));
-		memcpy(out.right, out_buffer_r.data(), buffersize * sizeof(out.right[0]));
-	}
-
-	void init() override {
-		out_buffer_l.resize(buffersize);
-		out_buffer_r.resize(buffersize);
 	}
 
 public:	// FEATURE: make these private?
-	~example_plugin() override {}
-	example_plugin() : osc_in(1024) {}
+	~gain_effect() override {}
+	gain_effect()
+	{
+		gain.min = 0.0f;
+		gain.max = 1.0f;
+		gain.step = 0.02f;
+		gain.def = 1.0f;
+	}
 
 private:
 
 	void activate() override {}
 	void deactivate() override {}
 
-	float gain = 0.0f; // received via OSC
-
 	spa::audio::stereo::in in;
 	spa::audio::stereo::out out;
-	buffersize_port buffersize;
-	spa::audio::osc_ringbuffer_in osc_in;
+	spa::audio::control_in<float> gain;
+	spa::audio::samplecount samplecount;
 
 	spa::port_ref_base& port(const char* path) override
 	{
-		using p = spa::port_ref_base;
 		switch(path[0])
 		{
 			case 'i': return in;
-			case 'o': return path[1] == 's' ? (p&)osc_in : (p&)out;
-			case 'b': return buffersize;
+			case 'o': return out;
+			case 's': return samplecount;
+			case 'g': return gain;
 			default: throw spa::port_not_found(path);
 		}
 	}
 };
 
-class example_descriptor : public spa::descriptor
+class gain_effect_descriptor : public spa::descriptor
 {
 	SPA_DESCRIPTOR
 public:
-	example_descriptor() { properties.hard_rt_capable = 1; }
+	gain_effect_descriptor() { properties.hard_rt_capable = 1; }
 
 	hoster_t hoster() const override { return hoster_t::github; }
 	const char* organization_url() const override {
 		return "JohannesLorenz"; /* TODO: create spa organisation? */ }
 	const char* project_url() const override { return "spa"; }
-	const char* label() const override { return "example-plugin"; }
+	const char* label() const override { return "gain"; }
 
 	const char* project() const override { return "spa"; }
-	const char* name() const override { return "Example Plugin"; }
+	const char* name() const override { return "Gain"; }
 	const char* authors() const override { return "Johannes Lorenz"; }
 
 	const char* description_full() const override {
 		return description_line(); }
 	const char* description_line() const override {
-		return "example audio gain plugin for tests"; }
+		return "Gain plugin"; }
 
 	license_type license() const override { return license_type::gpl_3_0; }
 
 	struct port_names_t { const char** names; };
 	spa::simple_vec<spa::simple_str> port_names() const override {
-		return { "in", "out", "buffersize", "osc" };
+		return { "in", "out", "samplecount", "gain" };
 	}
 
-	example_plugin* instantiate() const override {
-		return new example_plugin; }
+	gain_effect* instantiate() const override {
+		return new gain_effect; }
 };
 
 extern "C" {
@@ -138,7 +110,7 @@ extern "C" {
 const spa::descriptor* spa_descriptor(unsigned long )
 {
 	// we have only one plugin, ignore the number
-	return new example_descriptor;
+	return new gain_effect_descriptor;
 }
 }
 

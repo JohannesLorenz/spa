@@ -99,7 +99,7 @@ inline bool operator>=(const version_t& lhs, const version_t& rhs) {
 }
 
 //! current version of this spa API
-constexpr const version_t api_version(0, 0, 2);
+constexpr const version_t api_version(0, 0, 3);
 //! least spa API version that is compatible
 constexpr const version_t least_api_version(0, 0, 2);
 
@@ -639,6 +639,9 @@ public:
 	virtual ~plugin();
 
 	//! Return the port with name @p path (or throw port_not_found)
+	//! If a port at path is offered, but no memory has been allocated
+	//! yet, it *must* be allocated now, and exist until the end
+	//! the host is responsible for freeing (TODO: can it know?)
 	virtual port_ref_base& port(const char* path) = 0;
 
 	//! show or hide the external UI

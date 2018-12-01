@@ -112,6 +112,9 @@ enum class scale_type_t
 	logartihmic
 };
 
+// TODO: how can the plugin check() that min < value < max in the beginning
+// (i.e. that the host really did set the value)?
+// TODO: how can the host check() that the def value has been set by the plugin?
 template<class T>
 class control_in : public virtual port_ref<const T>, public virtual input
 {
