@@ -1,6 +1,6 @@
 /*************************************************************************/
-/* osc-plugin.cpp - a minimal OSC example plugin                         */
-/* Copyright (C) 2018                                                    */
+/* reverser.cpp - a reverser plugin                                      */
+/* Copyright (C) 2019                                                    */
 /* Johannes Lorenz (j.git$$$lorenz-ho.me, $$$=@)                         */
 /*                                                                       */
 /* This program is free software; you can redistribute it and/or modify  */
@@ -18,8 +18,8 @@
 /*************************************************************************/
 
 /**
-	@file gain.cpp
-	a gain plugin for practical use
+	@file reverser.cpp
+	a reverser plugin
 */
 
 #include <cstring>
@@ -33,21 +33,58 @@ class reverser_effect : public spa::plugin
 public:
 	void run() override
 	{
-		for(unsigned i = 0; i < samplecount; ++i)
+		if(action == 2) // play
 		{
-			out.left[i] = gain * in.left[i];
-			out.right[i] = gain * in.right[i];
+			if(last_action != action)
+				play_head = 0;
+			std::size_t end = std::max(play_head +
+					samplecount, buffer->size());
+			for(std::size_t i = play_head; i < end; ++i)
+			{
+				out.left[i] = buffer[0][play_head + i];
+				out.right[i] = buffer[1][play_head + i];
+			}
+			for(std::size_t i = end; i < samplecount; ++i)
+			{
+				out.left[i] = out.right[i] = .0f;
+			}
 		}
+		else
+		{
+			if(last_action != action)
+			{
+				is_recording = !is_recording;
+				record_head = 0;
+			}
+
+			if(is_recording)
+			{
+				std::size_t end = std::max(record_head +
+					samplecount, buffer->size());
+				for(std::size_t i = record_head; i < end; ++i)
+				{
+					buffer[0][record_head + i] = in.left[i];
+					buffer[1][record_head + i] = in.right[i];
+					out.left[i] = out.right[i] = .0f;
+				}
+				for(std::size_t i = end; i < samplecount; ++i)
+				{
+					out.left[i] = out.right[i] = .0f;
+				}
+				record_head = end;
+			}
+		}
+
+		last_action = action;
 	}
 
 public:	// FEATURE: make these private?
 	~reverser_effect() override {}
 	reverser_effect()
 	{
-		gain.min = 0.0f;
-		gain.max = 1.0f;
-		gain.step = 0.02f;
-		gain.def = 1.0f;
+		action.min = 0;
+		action.max = 2;
+		action.def = 0;
 	}
 
 private:
@@ -55,9 +92,15 @@ private:
 	void activate() override {}
 	void deactivate() override {}
 
+	std::vector<float> buffer[2];
+
+	bool is_recording = false;
+	int last_action = 2;
+	std::size_t record_head = 0, play_head = 0;
+
 	spa::audio::stereo::in in;
 	spa::audio::stereo::out out;
-	spa::audio::control_in<float> gain;
+	spa::audio::control_in<int> action;
 	spa::audio::samplecount samplecount;
 
 	spa::port_ref_base& port(const char* path) override
@@ -67,7 +110,7 @@ private:
 			case 'i': return in;
 			case 'o': return out;
 			case 's': return samplecount;
-			case 'g': return gain;
+			case 'a': return action;
 			default: throw spa::port_not_found(path);
 		}
 	}
@@ -83,22 +126,22 @@ public:
 	const char* organization_url() const override {
 		return "JohannesLorenz"; /* TODO: create spa organisation? */ }
 	const char* project_url() const override { return "spa"; }
-	const char* label() const override { return "gain"; }
+	const char* label() const override { return "reverser"; }
 
 	const char* project() const override { return "spa"; }
-	const char* name() const override { return "Gain"; }
+	const char* name() const override { return "Reverser"; }
 	const char* authors() const override { return "Johannes Lorenz"; }
 
 	const char* description_full() const override {
 		return description_line(); }
 	const char* description_line() const override {
-		return "Gain plugin"; }
+		return "Reverser plugin"; }
 
 	license_type license() const override { return license_type::gpl_3_0; }
 
 	struct port_names_t { const char** names; };
 	spa::simple_vec<spa::simple_str> port_names() const override {
-		return { "in", "out", "samplecount", "gain" };
+		return { "in", "out", "samplecount", "action" };
 	}
 
 	reverser_effect* instantiate() const override {
