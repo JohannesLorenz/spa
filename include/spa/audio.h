@@ -133,6 +133,13 @@ public:
 };
 
 template<class T>
+class measure : public virtual input
+{
+public:
+	control_in<T> numerator, denominator;
+};
+
+template<class T>
 class control_out : public virtual port_ref<T>, public virtual input
 {
 public:

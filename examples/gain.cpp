@@ -28,26 +28,26 @@
 
 #include <spa/audio.h>
 
-class reverser_effect : public spa::plugin
+class gain : public spa::plugin
 {
 public:
 	void run() override
 	{
 		for(unsigned i = 0; i < samplecount; ++i)
 		{
-			out.left[i] = gain * in.left[i];
-			out.right[i] = gain * in.right[i];
+			out.left[i] = gain_port * in.left[i];
+			out.right[i] = gain_port * in.right[i];
 		}
 	}
 
 public:	// FEATURE: make these private?
-	~reverser_effect() override {}
-	reverser_effect()
+	~gain() override {}
+	gain()
 	{
-		gain.min = 0.0f;
-		gain.max = 1.0f;
-		gain.step = 0.02f;
-		gain.def = 1.0f;
+		gain_port.min = 0.0f;
+		gain_port.max = 1.0f;
+		gain_port.step = 0.02f;
+		gain_port.def = 1.0f;
 	}
 
 private:
@@ -57,7 +57,7 @@ private:
 
 	spa::audio::stereo::in in;
 	spa::audio::stereo::out out;
-	spa::audio::control_in<float> gain;
+	spa::audio::control_in<float> gain_port;
 	spa::audio::samplecount samplecount;
 
 	spa::port_ref_base& port(const char* path) override
@@ -67,17 +67,17 @@ private:
 			case 'i': return in;
 			case 'o': return out;
 			case 's': return samplecount;
-			case 'g': return gain;
+			case 'g': return gain_port;
 			default: throw spa::port_not_found(path);
 		}
 	}
 };
 
-class reverser_effect_descriptor : public spa::descriptor
+class gain_descriptor : public spa::descriptor
 {
 	SPA_DESCRIPTOR
 public:
-	reverser_effect_descriptor() { properties.hard_rt_capable = 1; }
+	gain_descriptor() { properties.hard_rt_capable = 1; }
 
 	hoster_t hoster() const override { return hoster_t::github; }
 	const char* organization_url() const override {
@@ -101,8 +101,8 @@ public:
 		return { "in", "out", "samplecount", "gain" };
 	}
 
-	reverser_effect* instantiate() const override {
-		return new reverser_effect; }
+	gain* instantiate() const override {
+		return new gain; }
 };
 
 extern "C" {
@@ -110,7 +110,7 @@ extern "C" {
 const spa::descriptor* spa_descriptor(unsigned long )
 {
 	// we have only one plugin, ignore the number
-	return new reverser_effect_descriptor;
+	return new gain_descriptor;
 }
 }
 

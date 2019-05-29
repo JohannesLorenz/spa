@@ -1,5 +1,5 @@
 /*************************************************************************/
-/* reverser.cpp - a reverser plugin                                      */
+/* step-repeater.cpp - a step-wise repeater                              */
 /* Copyright (C) 2019                                                    */
 /* Johannes Lorenz (j.git$$$lorenz-ho.me, $$$=@)                         */
 /*                                                                       */
@@ -18,8 +18,8 @@
 /*************************************************************************/
 
 /**
-	@file reverser.cpp
-	a reverser plugin
+	@file step-repeater.cpp
+	a step-wise repeater plugin
 */
 
 #include <cstring>
@@ -28,72 +28,18 @@
 
 #include <spa/audio.h>
 
-class reverser : public spa::plugin
+class step_repeater : public spa::plugin
 {
-	enum action_t
-	{
-		ac_record,
-		ac_hold,
-		ac_play
-	};
-
 public:
 	void run() override
 	{
-		if(action == ac_play)
-		{
-			if(last_action != action)
-				play_head = 0;
-			std::size_t end = std::max(play_head +
-					samplecount, buffer->size());
-			for(std::size_t i = play_head; i < end; ++i)
-			{
-				out.left[i] = buffer[0][play_head + i];
-				out.right[i] = buffer[1][play_head + i];
-			}
-			for(std::size_t i = end; i < samplecount; ++i)
-			{
-				out.left[i] = out.right[i] = .0f;
-			}
-		}
-		else
-		{
-			if(last_action != action)
-			{
-				is_recording = action == ac_record;
-				record_head = 0;
-			}
-
-			if(is_recording)
-			{
-				std::size_t end = std::max(record_head +
-					samplecount, buffer->size());
-				for(std::size_t i = record_head; i < end; ++i)
-				{
-					buffer[0][record_head + i] = in.left[i];
-					buffer[1][record_head + i] = in.right[i];
-					out.left[i] = out.right[i] = .0f;
-				}
-				for(std::size_t i = end; i < samplecount; ++i)
-				{
-					out.left[i] = out.right[i] = .0f;
-				}
-				record_head = end;
-			}
-		}
-
-		last_action = action;
 	}
 
 public:	// FEATURE: make these private?
-	~reverser() override {}
-	reverser()
+	~step_repeater() override {}
+	step_repeater()
 	{
-		action.min = 0;
-		action.max = 2;
-		action.def = ac_hold;
-		for(std::size_t i = 0; i < sizeof(buffer); ++i)
-			std::fill(buffer[i].begin(), buffer[i].end(), .0f);
+
 	}
 
 private:
@@ -103,14 +49,11 @@ private:
 
 	std::vector<float> buffer[2];
 
-	bool is_recording = false;
-	int last_action = 2;
-		std::size_t record_head = 0, play_head = 0;
-
 	spa::audio::stereo::in in;
 	spa::audio::stereo::out out;
-	spa::audio::control_in<int> action;
 	spa::audio::samplecount samplecount;
+	spa::audio::measure<int> repeat_rate;
+	spa::audio::control_in<float>
 
 	spa::port_ref_base& port(const char* path) override
 	{
@@ -119,26 +62,25 @@ private:
 			case 'i': return in;
 			case 'o': return out;
 			case 's': return samplecount;
-			case 'a': return action;
 			default: throw spa::port_not_found(path);
 		}
 	}
 };
 
-class reverser_descriptor : public spa::descriptor
+class step_repeater_descriptor : public spa::descriptor
 {
 	SPA_DESCRIPTOR
 public:
-	reverser_descriptor() { properties.hard_rt_capable = 1; }
+	step_repeater_descriptor() { properties.hard_rt_capable = 1; }
 
 	hoster_t hoster() const override { return hoster_t::github; }
 	const char* organization_url() const override {
 		return "JohannesLorenz"; /* TODO: create spa organisation? */ }
 	const char* project_url() const override { return "spa"; }
-	const char* label() const override { return "reverser"; }
+	const char* label() const override { return "step-repeater"; }
 
 	const char* project() const override { return "spa"; }
-	const char* name() const override { return "Reverser"; }
+	const char* name() const override { return "Step Repeater"; }
 	const char* authors() const override { return "Johannes Lorenz"; }
 
 	const char* description_full() const override {
@@ -153,8 +95,8 @@ public:
 		return { "in", "out", "samplecount", "action" };
 	}
 
-	reverser* instantiate() const override {
-		return new reverser; }
+	step_repeater* instantiate() const override {
+		return new step_repeater; }
 };
 
 extern "C" {
@@ -162,7 +104,7 @@ extern "C" {
 const spa::descriptor* spa_descriptor(unsigned long )
 {
 	// we have only one plugin, ignore the number
-	return new reverser_descriptor;
+	return new step_repeater_descriptor;
 }
 }
 
