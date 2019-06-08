@@ -34,51 +34,74 @@ class reverser : public spa::plugin
 	{
 		ac_record,
 		ac_hold,
-		ac_play
+		ac_play_1,
+		ac_play_2
 	};
 
 public:
 	void run() override
 	{
-		if(action == ac_play)
+		switch(static_cast<int>(action))
 		{
-			if(last_action != action)
-				play_head = 0;
-			std::size_t end = std::max(play_head +
-					samplecount, buffer->size());
-			for(std::size_t i = play_head; i < end; ++i)
-			{
-				out.left[i] = buffer[0][play_head + i];
-				out.right[i] = buffer[1][play_head + i];
-			}
-			for(std::size_t i = end; i < samplecount; ++i)
-			{
-				out.left[i] = out.right[i] = .0f;
-			}
-		}
-		else
-		{
-			if(last_action != action)
-			{
-				is_recording = action == ac_record;
-				record_head = 0;
-			}
+			case ac_play_1:
+			case ac_play_2:
+				{
+					if(last_action != action)
+					{
+						play_head = record_head;
+					}
 
-			if(is_recording)
+					// last element of buffer we can go back to
+					std::size_t last = (static_cast<unsigned>(samplecount)) <= play_head ? samplecount : 0;
+
+					for(std::size_t i = play_head; i > last; --i)
+					{
+						out.left[i] = buffer[0][play_head - i];
+						out.right[i] = buffer[1][play_head - i];
+					}
+					for(std::size_t i = last; i < play_head + samplecount; --i)
+					{
+						out.left[i] = out.right[i] = .0f;
+					}
+					play_head = last;
+				}
+				break;
+
+			case ac_record:
 			{
-				std::size_t end = std::max(record_head +
-					samplecount, buffer->size());
-				for(std::size_t i = record_head; i < end; ++i)
+				if(last_action != action)
+				{
+					record_head = 0;
+				}
+
+				// note: record_head will always be <= buffer->size
+				std::size_t last = std::min(static_cast<std::size_t>(static_cast<unsigned>(samplecount)),
+									buffer->size() - record_head);
+
+				for(std::size_t i = 0; i < last; ++i)
 				{
 					buffer[0][record_head + i] = in.left[i];
 					buffer[1][record_head + i] = in.right[i];
-					out.left[i] = out.right[i] = .0f;
 				}
-				for(std::size_t i = end; i < samplecount; ++i)
+				// nothing more to record
+
+				// output silence while recording
+				for(std::size_t i = 0; i < samplecount; ++i)
 				{
 					out.left[i] = out.right[i] = .0f;
 				}
-				record_head = end;
+
+				record_head += last;
+
+			}
+			[[clang::fallthrough]]; case ac_hold:
+			{
+				// output silence while recording/holding
+				for(std::size_t i = 0; i < samplecount; ++i)
+				{
+					out.left[i] = out.right[i] = .0f;
+				}
+				break;
 			}
 		}
 
@@ -103,9 +126,9 @@ private:
 
 	std::vector<float> buffer[2];
 
-	bool is_recording = false;
+	//bool is_recording = false;
 	int last_action = 2;
-		std::size_t record_head = 0, play_head = 0;
+	std::size_t record_head = 0, play_head = 0;
 
 	spa::audio::stereo::in in;
 	spa::audio::stereo::out out;
