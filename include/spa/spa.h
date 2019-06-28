@@ -692,7 +692,8 @@ public:
 
 	/*
 	 * Trick to find out what version the plugin uses
-	 * these functions should always stay in the header
+	 * these functions should never be explicitly overridden, but implicitly
+	 * using the SPA_DESCRIPTOR macro
 	 */
 	//!< must return spa::api_version
 	virtual version_t spa_version() const = 0;
@@ -761,7 +762,9 @@ public:
 	//! Describe in detail what the plugin does
 	virtual const char* description_full() const { return nullptr; }
 
-	//! Function that must return an allocated plugin
+	//! Function that must return a plugin
+	//! @note by default, the plugin will be freed using delete
+	//!   This can be changed by overriding delete_plugin()
 	virtual plugin* instantiate() const = 0;
 
 	//! Should return an XPM array for a preview logo, or nullptr
@@ -769,6 +772,13 @@ public:
 
 	//! Desctructor, must clean up any allocated memory
 	virtual ~descriptor();
+
+/*	// Will probably deleted, since dtor can do the same
+	//! Function that must delete a plugin instantiated by instantiate()
+	virtual void delete_plugin(plugin* ptr) const { delete ptr; }
+
+	//! Function that should clean up the memory of this descriptor
+	virtual void delete_self() { delete this; } */
 
 	//! Return all port names the plugin wants to expose. Must be
 	//! nullptr-terminated.
@@ -807,6 +817,8 @@ public:
 //! Function that must return a spa descriptor.
 //! The argument must currently be 0 (TODO).
 //! Entry point for any plugin.
+//! @note by default, the descriptor will be freed using delete
+//!   This can be changed by overriding descriptor::delete_self()
 typedef descriptor* (*descriptor_loader_t) (unsigned long);
 
 inline void assert_versions_match(const spa::descriptor& descriptor)
@@ -850,6 +862,8 @@ inline std::string unique_name(const spa::descriptor& desc,
 	res += desc.project_url();
 	res += sep;
 	res += desc.branch();
+	res += sep;
+	res += desc.label();
 
 	return res;
 }
