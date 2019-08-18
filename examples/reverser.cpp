@@ -54,7 +54,8 @@ class reverser : public spa::plugin
 
 	//std::size_t blend_size, blend_progress;
 
-	const std::size_t minimal_action_change = 256;
+	// time for fade in + fade out, so that both never can occur at the same time
+	const std::size_t minimal_action_change = fade_calc_length * 2;
 	std::size_t last_action_change = 0; //! how many samples is last action change ago?
 
 	//! multiply with an increasing S curve
@@ -139,19 +140,106 @@ class reverser : public spa::plugin
 		fade_out
 	};
 
-	std::size_t minus(std::size_t higher_pos, std::size_t lower_pos)
+	struct dist_t
 	{
-		// higher pos is known to be higher
-		return (higher_pos + bs() - lower_pos) % bs();
+		std::size_t val;
+		float to_float() const { return static_cast<float>(val); }
+		dist_t() = default;
+		explicit dist_t(std::size_t val) : val(val) {}
+	};
+
+	struct pos_t
+	{
+		std::size_t val;
+		bool operator==(const pos_t& rhs) const { return val == rhs.val; }
+		bool operator!=(const pos_t& rhs) const { return val != rhs.val; }
+		pos_t& operator=(const pos_t& rhs) { val = rhs.val; return *this; }
+		pos_t() = default;
+		explicit pos_t(std::size_t val) : val(val) {}
+		pos_t(const pos_t& rhs) = default;
+	};
+
+	// higher pos is known to be higher, i.e. behind lower pos in the
+	// readable range
+	dist_t minus (pos_t higher, pos_t lower) // TODO: use operator-
+	{
+		return {(higher.val + bs() - lower.val) % bs()};
+	}
+
+	dist_t minus(pos_t higher, dist_t lower)
+	{
+		return {(higher.val + bs() - lower.val) % bs()};
+	}
+
+	pos_t plus(pos_t a, dist_t b)
+	{
+		return pos_t((a.val + b.val) % bs());
+	}
+
+
+#if 0
+	// higher pos is known to be higher, i.e. behind lower pos in the
+	// readable range
+	std::size_t minus(std::size_t higher_pos, std::size_t lower_pos_or_delta)
+	{
+		return (higher_pos + bs() - lower_pos_or_delta) % bs();
+	}
+
+	std::size_t plus(std::size_t a, std::size_t b)
+	{
+		return (a + b) % bs();
+	}
+#endif
+	template<class GetWritePos>
+	void write_buffers(pos_t play_left_pos,
+		pos_t play_right_pos,
+		pos_t play_left_peak_pos,
+		pos_t play_right_peak_pos)
+	{
+		const float fade_delta = 1.f / fade_calc_length;
+
+		//float fade_in_mult = ;
+		pos_t i;
+
+		// use multiple for loops for speedups
+
+
+		dist_t iout = forward ? dist_t{0} : minus(play_right_pos, play_left_pos);
+
+		GetWritePos get_write_pos;
+
+		// i is the ringbuffer index, starting at from_this_buf
+		// iout is the output index, starting at 0
+		for(i = play_left_pos; i != play_left_peak_pos; i = (i + 1) % bs(), iout = forward ? (iout + 1) : (iout - 1))
+		{
+			float fade = 1.f - minus(play_left_peak_pos, i).to_float() * fade_delta;
+			out.left[iout] += fade * buffer[0][i];
+			out.right[iout] += fade * buffer[1][i];
+		}
+
+		for(i = play_left_peak_pos; i != play_right_peak_pos; i = (i + 1) % bs(), iout = forward ? (iout + 1) : (iout - 1))
+		{
+			out.left[iout] += buffer[0][i];
+			out.right[iout] += buffer[1][i];
+		}
+
+		for(i = play_right_peak_pos; i != play_right_pos; i = (i + 1) % bs(), iout = forward ? (iout + 1) : (iout - 1))
+		{
+			float fade = 1.f - (plus(minus(i, play_right_peak_pos), dist_t(1))).to_float() * fade_delta;
+			out.left[iout] += fade * buffer[0][i];
+			out.right[iout] += fade * buffer[1][i];
+		}
 	}
 
 	// play buffer, increases from_this_buf
-	void play(std::size_t& from_this_buf, fade_type ft, std::size_t from = 0)
+	// TODO: capture from, too
+	void play(pos_t& from_this_buf, fade_type ft,
+		std::size_t artificial_fade_out_start = std::numeric_limits<std::size_t>::max())
 	{
 		// how many samples can we still play backwards?
 		// TODO: use std::size_t for such ports?
 
-		const std::size_t samples = static_cast<unsigned>(samplecount);
+		const dist_t samples(static_cast<unsigned>(samplecount));
 
 #if 0
 		// find last sample we need to play
@@ -160,49 +248,164 @@ class reverser : public spa::plugin
 			(forward ? std::min(minus(record_head, from_this_buf), samples)
 				: std::min(from_this_buf, samples));
 #endif
-		std::size_t max = std::min
-			(forward ? minus(record_head, from_this_buf) : minus(from_this_buf, record_start), samples);
 
+#if 0
+		std::size_t max =
+			std::min(forward ? read_space_right : read_space_left,
+				samples);
+#endif
+		// a fade-in means that
+		//  - before the fade, all is 0
+		//  - in the fade, we have 0/n, 1/n ... (n-1)/n
+		// markers for the 3 for loops
+#if 0
+		const std::size_t fade_in_begin = from_this_buf;
+		std::size_t fade_in_end = from_this_buf;
+		std::size_t fade_out_begin = from_this_buf + max;
+		const std::size_t fade_out_end = from_this_buf + max;
+#endif
 
-
-		float fade_start, fade_delta;
 		switch (ft)
 		{
 			case no_fade:
-				fade_start = 1.0f;
-				fade_delta = 0.0f;
 				break;
 			case fade_in:
 				assert(false);
-				fade_start = (minus(from_this_buf, from) / static_cast<float>(fade_calc_length));
-				fade_delta = 1.f / fade_calc_length;
+//				fade_start = (minus(from_this_buf, from) / static_cast<float>(fade_calc_length));
+//				fade_delta = 1.f / fade_calc_length;
 				break;
 			case fade_out:
-				fade_start = 1.f - (minus(from_this_buf, from) / static_cast<float>(fade_calc_length));
-				fade_delta = -1.f / fade_calc_length;
+//				fade_out_start = 1.f - (minus(from_this_buf, from) / static_cast<float>(fade_calc_length));
+//				fade_delta = -1.f / fade_calc_length;
 				break;
 		}
+
+		auto is_greater = [this](
+				std::size_t lhs_pos,
+				std::size_t rhs_pos) -> bool {
+			return (minus(lhs_pos, record_start) >
+				minus(rhs_pos, record_start));
+		};
+
+		auto is_smaller = [this](
+				std::size_t lhs_pos,
+				std::size_t rhs_pos) {
+			return (minus(lhs_pos, record_start) <
+				minus(rhs_pos, record_start));
+		};
+
+		auto max = [is_greater](std::size_t pos1, std::size_t pos2) {
+			return is_greater(pos1, pos2) ? pos1 : pos2;
+		};
+
+		auto min = [is_smaller](std::size_t pos1, std::size_t pos2) {
+			return is_smaller(pos1, pos2) ? pos1 : pos2;
+		};
+
+/*		// are there enough samples to play this buffer + a fadeout?
+		if(read_space_right >= fade_calc_length + samplecount)
+		{
+			play_right_peak_pos = fade_right_end;
+		}
+		// fade starts before this buffer?
+		else if(read_space_right < fade_calc_length)
+		{
+			fade_right_peak = fade_left_begin;
+		}
+		else { // fade starts in this buffer
+			fade_right_peak = minus(record_head, fade_calc_length);
+		}
+*/
+
+/*
+    fade_left_peak        fade_right_peak / artificial_fade_out_start
+	  +----------------------+
+	 /                        \
+	/                          \   env_end
+       /                            \ record_end / ...
+      +           <-------+          +
+    record_start          +-------->
+ (=env_start)             |
+		    from_this_buf
+
+		  +       +   <- play left pos
+			  +        +   <- play right pos
+		  +       +   <- play left peak pos
+			  +      +     <- play right peak pos
+*/
+
+		// 1. calculate envelope independent of current position
+
+		std::size_t env_start = record_start;
+		std::size_t env_end =
+			(artificial_fade_out_start == std::numeric_limits<std::size_t>::max())
+			? record_head
+			: plus(artificial_fade_out_start, fade_calc_length);
+
+		std::size_t env_fade_left_peak = plus(env_start, fade_calc_length);
+		std::size_t env_fade_right_peak = minus(env_end, fade_calc_length);
+
+//		std::size_t play_left_pos = plus(from_this_buf, );
+
+		std::size_t play_left_pos, play_right_pos;
+
+		{
+			std::size_t read_space_right = minus(env_end, from_this_buf);
+			std::size_t read_space_left = minus(from_this_buf, env_start);
+			if (read_space_right < fade_calc_length && read_space_left < fade_calc_length)
+			{
+				// not yet at full volume, plus already not at full volume?
+				assert(false); // impossible
+			}
+
+			if(forward)
+			{
+				play_left_pos = from_this_buf;
+				play_right_pos = plus(play_left_pos, std::min(read_space_right, samples));
+			}
+			else {
+				play_right_pos = from_this_buf;
+				play_left_pos = minus(play_right_pos, std::min(read_space_left, samples));
+			}
+		}
+
+		std::size_t play_left_peak_pos, play_right_peak_pos;
+		play_right_peak_pos = min(env_fade_right_peak, play_right_pos);
+		play_left_peak_pos = max(env_fade_left_peak, play_left_pos);
 
 
 		if(forward)
 		{
-			for(std::size_t i = 0; i < max; ++i)
-			{
-				float fade = (fade_start + i * fade_delta);
-				out.left[i] += fade * buffer[0][(from_this_buf + i) % bs()];
-				out.right[i] += fade * buffer[1][(from_this_buf + i) % bs()];
-			}
-			from_this_buf += max;
+			write_buffers(0, 1);
 		}
 		else {
-			for(std::size_t i = 0; i < max; ++i)
-			{
-				float fade = (fade_start + i * fade_delta);
-				out.left[i] += fade * buffer[0][(from_this_buf + bs() - i) % bs()];
-				out.right[i] += fade * buffer[1][(from_this_buf + bs() - i) % bs()];
-			}
-			from_this_buf -= max;
+
 		}
+
+
+/*
+
+		if(forward)
+		{
+			struct funcs
+			{
+				static void inc(std::size_t& a, std::size_t bs) { a = plus(a, 1, bs); }
+				static std::size_t distance(std::size_t& a, std::size_t& b, std::size_t bs) { return minus(a, b, bs); }
+			};
+			write_buffers<funcs>(fade_in_begin, fade_in_end, fade_out_begin,
+				fade_out_end);
+		}
+		else
+		{
+			struct funcs
+			{
+				static void inc(std::size_t& a, std::size_t bs) { a = minus(a, 1, bs); }
+				static std::size_t distance(std::size_t& a, std::size_t& b, std::size_t bs) { return minus(b, a, bs); }
+			};
+			write_buffers<funcs>(fade_in_begin, fade_in_end, fade_out_begin,
+				fade_out_end);
+		}
+*/
 	}
 
 	std::size_t bs() const { return buffer->size(); }
@@ -253,6 +456,7 @@ public:
 
 		if(last_action != action && (last_action == ac_play_1 || last_action == ac_play_2))
 		{
+			// action change marks beginning of fade out
 			play(last_play_head, fade_out, last_play_head_at_action_change);
 		}
 
@@ -334,13 +538,13 @@ private:
 	action_t last_action = action_t::ac_hold; //  TODO: sync with control
 
 	//! index into each buffer, where the next samples need to be recorded
-	std::size_t record_head = 0;
+	pos_t record_head = 0;
 	//! index into each buffer, where the next samples need to be played
-	std::size_t play_head = 0;
+	pos_t play_head = 0;
 
-	std::size_t record_start; //!< where the current recording started
-	std::size_t last_play_head; //!< play_head from previous action, still moving
-	std::size_t last_play_head_at_action_change;
+	pos_t record_start; //!< where the current recording started
+	pos_t last_play_head; //!< play_head from previous action, still moving
+	pos_t last_play_head_at_action_change;
 
 	spa::audio::stereo::in in;
 	spa::audio::stereo::out out;
