@@ -32,6 +32,34 @@
 
 class reverser : public spa::plugin
 {
+	struct dist_t
+	{
+		std::size_t val;
+		float to_float() const { return static_cast<float>(val); }
+		dist_t() = default;
+		constexpr dist_t(const dist_t& other) = default;
+		constexpr dist_t operator=(const dist_t& other) { val = other.val; return *this; }
+		constexpr explicit dist_t(std::size_t val) : val(val) {}
+		bool operator<(const dist_t& rhs) const { return val < rhs.val; }
+		bool operator>(const dist_t& rhs) const { return val > rhs.val; }
+		bool operator<=(const dist_t& rhs) const { return val <= rhs.val; }
+		bool operator>=(const dist_t& rhs) const { return val >= rhs.val; }
+		dist_t& operator++() { val++; return *this; }
+		dist_t operator*(std::size_t fac) const { dist_t res; res.val = val * fac; return res; }
+	};
+
+	struct pos_t
+	{
+		std::size_t val;
+		bool operator==(const pos_t& rhs) const { return val == rhs.val; }
+		bool operator!=(const pos_t& rhs) const { return val != rhs.val; }
+		pos_t& operator=(const pos_t& rhs) { val = rhs.val; return *this; }
+		pos_t& operator++() { val++; return *this; }
+		pos_t() = default;
+		explicit pos_t(std::size_t val) : val(val) {}
+		pos_t(const pos_t& rhs) = default;
+	};
+
 	enum action_t
 	{
 		ac_record,
@@ -47,7 +75,7 @@ class reverser : public spa::plugin
 	//! to fade out
 	//std::vector<std::vector<float>> next_bytes[2];
 
-	constexpr const static std::size_t fade_calc_length = 256; // works great in zyn, so...
+	dist_t fade_calc_length = dist_t(256); // works great in zyn, so...
 	constexpr const static float fadein_adjustment = 20.0f;
 
 //	std::size_t fade_length_front, fade_length_end;
@@ -55,9 +83,10 @@ class reverser : public spa::plugin
 	//std::size_t blend_size, blend_progress;
 
 	// time for fade in + fade out, so that both never can occur at the same time
-	const std::size_t minimal_action_change = fade_calc_length * 2;
-	std::size_t last_action_change = 0; //! how many samples is last action change ago?
+	const dist_t minimal_action_change = fade_calc_length * std::size_t(2);
+	dist_t last_action_change = dist_t(0); //! how many samples is last action change ago?
 
+#if 0
 	//! multiply with an increasing S curve
 	//! @param smps begin of array, must have fadein_calc_length elements
 	//! @note copied from zyn ...
@@ -78,6 +107,7 @@ class reverser : public spa::plugin
 			n = fade_calc_length;
 		return n;
 	}
+#endif
 
 	void apply_fade(float* smps, std::size_t length)
 	{
@@ -92,7 +122,7 @@ class reverser : public spa::plugin
 		}
 	}
 
-
+#if 0
 	//! multiply with an increasing S curve
 	//! @note copied from zyn ...
 	static void fadein(float *smps, std::size_t begin, std::size_t size)
@@ -132,7 +162,7 @@ class reverser : public spa::plugin
 		for (std::size_t i = 0; i < size; ++i)
 			smps[i] = initial - i * delta;
 	}
-
+#endif
 	enum fade_type
 	{
 		no_fade,
@@ -140,40 +170,33 @@ class reverser : public spa::plugin
 		fade_out
 	};
 
-	struct dist_t
-	{
-		std::size_t val;
-		float to_float() const { return static_cast<float>(val); }
-		dist_t() = default;
-		explicit dist_t(std::size_t val) : val(val) {}
-	};
 
-	struct pos_t
-	{
-		std::size_t val;
-		bool operator==(const pos_t& rhs) const { return val == rhs.val; }
-		bool operator!=(const pos_t& rhs) const { return val != rhs.val; }
-		pos_t& operator=(const pos_t& rhs) { val = rhs.val; return *this; }
-		pos_t() = default;
-		explicit pos_t(std::size_t val) : val(val) {}
-		pos_t(const pos_t& rhs) = default;
-	};
 
 	// higher pos is known to be higher, i.e. behind lower pos in the
 	// readable range
 	dist_t minus (pos_t higher, pos_t lower) // TODO: use operator-
 	{
-		return {(higher.val + bs() - lower.val) % bs()};
+		return dist_t((higher.val + bs() - lower.val) % bs());
 	}
 
-	dist_t minus(pos_t higher, dist_t lower)
+	pos_t minus(pos_t higher, dist_t lower)
 	{
-		return {(higher.val + bs() - lower.val) % bs()};
+		return pos_t((higher.val + bs() - lower.val) % bs());
+	}
+
+	dist_t minus (dist_t a, dist_t b) // TODO: use operator-
+	{
+		return dist_t(a.val - b.val);
 	}
 
 	pos_t plus(pos_t a, dist_t b)
 	{
 		return pos_t((a.val + b.val) % bs());
+	}
+
+	dist_t plus(dist_t a, dist_t b)
+	{
+		return dist_t(a.val + b.val);
 	}
 
 
@@ -196,7 +219,7 @@ class reverser : public spa::plugin
 		pos_t play_left_peak_pos,
 		pos_t play_right_peak_pos)
 	{
-		const float fade_delta = 1.f / fade_calc_length;
+		const float fade_delta = 1.f / fade_calc_length.to_float();
 
 		//float fade_in_mult = ;
 		pos_t i;
@@ -204,37 +227,43 @@ class reverser : public spa::plugin
 		// use multiple for loops for speedups
 
 
-		dist_t iout = forward ? dist_t{0} : minus(play_right_pos, play_left_pos);
+		std::size_t iout = forward ? 0 : minus(play_right_pos, play_left_pos).val;
 
 		GetWritePos get_write_pos;
 
 		// i is the ringbuffer index, starting at from_this_buf
 		// iout is the output index, starting at 0
-		for(i = play_left_pos; i != play_left_peak_pos; i = (i + 1) % bs(), iout = forward ? (iout + 1) : (iout - 1))
+		for(i = play_left_pos;
+			i != play_left_peak_pos;
+			++i, iout = forward ? (iout + 1) : (iout - 1))
 		{
 			float fade = 1.f - minus(play_left_peak_pos, i).to_float() * fade_delta;
-			out.left[iout] += fade * buffer[0][i];
-			out.right[iout] += fade * buffer[1][i];
+			out.left[get_write_pos(iout)] += fade * buffer[0][i.val];
+			out.right[get_write_pos(iout)] += fade * buffer[1][i.val];
 		}
 
-		for(i = play_left_peak_pos; i != play_right_peak_pos; i = (i + 1) % bs(), iout = forward ? (iout + 1) : (iout - 1))
+		for(i = play_left_peak_pos;
+			i != play_right_peak_pos;
+			++i, iout = forward ? (iout + 1) : (iout - 1))
 		{
-			out.left[iout] += buffer[0][i];
-			out.right[iout] += buffer[1][i];
+			out.left[get_write_pos(iout)] += buffer[0][i.val];
+			out.right[get_write_pos(iout)] += buffer[1][i.val];
 		}
 
-		for(i = play_right_peak_pos; i != play_right_pos; i = (i + 1) % bs(), iout = forward ? (iout + 1) : (iout - 1))
+		for(i = play_right_peak_pos;
+			i != play_right_pos;
+			++i, iout = forward ? (iout + 1) : (iout - 1))
 		{
 			float fade = 1.f - (plus(minus(i, play_right_peak_pos), dist_t(1))).to_float() * fade_delta;
-			out.left[iout] += fade * buffer[0][i];
-			out.right[iout] += fade * buffer[1][i];
+			out.left[get_write_pos(iout)] += fade * buffer[0][i.val];
+			out.right[get_write_pos(iout)] += fade * buffer[1][i.val];
 		}
 	}
 
 	// play buffer, increases from_this_buf
 	// TODO: capture from, too
 	void play(pos_t& from_this_buf, fade_type ft,
-		std::size_t artificial_fade_out_start = std::numeric_limits<std::size_t>::max())
+		pos_t artificial_fade_out_start = pos_t(std::numeric_limits<std::size_t>::max()))
 	{
 		// how many samples can we still play backwards?
 		// TODO: use std::size_t for such ports?
@@ -280,25 +309,21 @@ class reverser : public spa::plugin
 				break;
 		}
 
-		auto is_greater = [this](
-				std::size_t lhs_pos,
-				std::size_t rhs_pos) -> bool {
-			return (minus(lhs_pos, record_start) >
-				minus(rhs_pos, record_start));
+		auto is_greater = [this](pos_t lhs, pos_t rhs) -> bool {
+			return (minus(lhs, record_start) >
+				minus(rhs, record_start));
 		};
 
-		auto is_smaller = [this](
-				std::size_t lhs_pos,
-				std::size_t rhs_pos) {
-			return (minus(lhs_pos, record_start) <
-				minus(rhs_pos, record_start));
+		auto is_smaller = [this](pos_t lhs, pos_t rhs) {
+			return (minus(lhs, record_start) <
+				minus(rhs, record_start));
 		};
 
-		auto max = [is_greater](std::size_t pos1, std::size_t pos2) {
+		auto max = [is_greater](pos_t pos1, pos_t pos2) {
 			return is_greater(pos1, pos2) ? pos1 : pos2;
 		};
 
-		auto min = [is_smaller](std::size_t pos1, std::size_t pos2) {
+		auto min = [is_smaller](pos_t pos1, pos_t pos2) {
 			return is_smaller(pos1, pos2) ? pos1 : pos2;
 		};
 
@@ -336,22 +361,22 @@ class reverser : public spa::plugin
 
 		// 1. calculate envelope independent of current position
 
-		std::size_t env_start = record_start;
-		std::size_t env_end =
-			(artificial_fade_out_start == std::numeric_limits<std::size_t>::max())
+		pos_t env_start = record_start;
+		pos_t env_end =
+			(artificial_fade_out_start.val == std::numeric_limits<std::size_t>::max())
 			? record_head
 			: plus(artificial_fade_out_start, fade_calc_length);
 
-		std::size_t env_fade_left_peak = plus(env_start, fade_calc_length);
-		std::size_t env_fade_right_peak = minus(env_end, fade_calc_length);
+		pos_t env_fade_left_peak = plus(env_start, fade_calc_length);
+		pos_t env_fade_right_peak = minus(env_end, fade_calc_length);
 
 //		std::size_t play_left_pos = plus(from_this_buf, );
 
-		std::size_t play_left_pos, play_right_pos;
+		pos_t play_left_pos, play_right_pos;
 
 		{
-			std::size_t read_space_right = minus(env_end, from_this_buf);
-			std::size_t read_space_left = minus(from_this_buf, env_start);
+			dist_t read_space_right = minus(env_end, from_this_buf);
+			dist_t read_space_left = minus(from_this_buf, env_start);
 			if (read_space_right < fade_calc_length && read_space_left < fade_calc_length)
 			{
 				// not yet at full volume, plus already not at full volume?
@@ -369,7 +394,7 @@ class reverser : public spa::plugin
 			}
 		}
 
-		std::size_t play_left_peak_pos, play_right_peak_pos;
+		pos_t play_left_peak_pos, play_right_peak_pos;
 		play_right_peak_pos = min(env_fade_right_peak, play_right_pos);
 		play_left_peak_pos = max(env_fade_left_peak, play_left_pos);
 
@@ -419,7 +444,7 @@ public:
 		// buffer switching, start of fade etc all goes lazy
 		if(last_action_change >= minimal_action_change)
 		{
-			last_action_change = 0;
+			last_action_change = dist_t(0);
 
 			last_action = action;
 			last_play_head_at_action_change = last_play_head = play_head;
@@ -473,28 +498,30 @@ public:
 				// note: record_head will always be <= bs
 
 				// how many samples can we record?
-				std::size_t max = std::min(
-							static_cast<std::size_t>(
-								static_cast<unsigned>(samplecount)),
-							minus(record_start, record_head) - 1);
+
+				dist_t samples_dist(static_cast<std::size_t>(
+					static_cast<unsigned>(samplecount)));
+				dist_t record_space = minus(record_start, record_head);
+				--record_space.val;
+				dist_t max = std::min(samples_dist, record_space);
 							// -1 because play_head = record_head would mean
 							// that we have not recorded anything
 
 				// TODO: this could be optimized to get rid of the mod
-				for(std::size_t i = 0; i < max; ++i)
+				for(dist_t i = dist_t(0); i < max; ++i)
 				{
-					buffer[0][record_head + i % bs()] = in.left[i];
-					buffer[1][record_head + i % bs()] = in.right[i];
+					buffer[0][plus(record_head, i).val] = in.left[i.val];
+					buffer[1][plus(record_head, i).val] = in.right[i.val];
 				}
 
-				record_head += max;
+				record_head = plus(record_head, max);
 				break;
 			}
 			case ac_hold:
 				break;
 		}
 
-		last_action_change += samplecount;
+		last_action_change = plus(last_action_change, dist_t(samplecount));
 	}
 
 public:	// FEATURE: make these private?
@@ -538,9 +565,9 @@ private:
 	action_t last_action = action_t::ac_hold; //  TODO: sync with control
 
 	//! index into each buffer, where the next samples need to be recorded
-	pos_t record_head = 0;
+	pos_t record_head = pos_t(0);
 	//! index into each buffer, where the next samples need to be played
-	pos_t play_head = 0;
+	pos_t play_head = pos_t(0);
 
 	pos_t record_start; //!< where the current recording started
 	pos_t last_play_head; //!< play_head from previous action, still moving
