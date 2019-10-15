@@ -5,11 +5,15 @@ include_directories(../include)
 include_directories(../include/rtosc/include)
 include_directories(../include/ringbuffer/include)
 
+add_executable(test-host test-host.cpp)
+target_link_libraries(test-host dl spa)
+
 add_executable(osc-host osc-host.cpp)
 target_link_libraries(osc-host dl spa)
 add_library(osc-plugin SHARED osc-plugin.cpp)
 add_library(gain SHARED gain.cpp)
 add_library(reverser SHARED reverser.cpp)
 #add_library(step-repeater SHARED step-repeater.cpp)
+add_library(test-gain SHARED test-gain.cpp)
 
 add_test(simple-host ./osc-host libosc-plugin.so)

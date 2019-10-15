@@ -31,6 +31,19 @@ ACCEPT_SPA_AUDIO(osc_ringbuffer_in)
 
 #undef ACCEPT_SPA_AUDIO
 
+/*
+	data
+*/
+
+data_visitor::~data_visitor() {}
+
+#define ACCEPT_SPA_AUDIO_DATA(classname) \
+	ACCEPT_DATA(classname, spa::audio::data_visitor)
+
+ACCEPT_SPA_AUDIO_DATA(data_osc_ringbuffer)
+
+#undef ACCEPT_SPA_AUDIO_DATA
+
 } // namespace audio
 } // namespace spa
 

@@ -43,9 +43,6 @@ public:
 	//! play the @p time'th time, i.e. 0, 1, 2...
 	void play(int time);
 
-	//! Set the name of the library where the plugin is
-	void set_library_name(const std::string& name) { library_name = name; }
-
 	//! All tests passed by now?
 	bool ok() const { return all_ok; }
 private:
@@ -72,9 +69,9 @@ private:
 //	std::map<std::string, port_base*> ports;
 };
 
-osc_host::osc_host(const char* library_name)
+osc_host::osc_host(const char* lib_name)
 {
-	set_library_name(library_name);
+	library_name = lib_name;
 	if(init_plugin())
 		all_ok = true;
 	else {
@@ -118,6 +115,8 @@ struct host_visitor : public virtual spa::audio::visitor
 {
 	bool ok = true;
 	osc_host* h;
+	const spa::simple_str* port_name;
+
 	using spa::audio::visitor::visit;
 
 	// TODO: forbid channel.operator= x ? (use channel class with set method)
@@ -229,6 +228,7 @@ bool osc_host::init_plugin()
 			// * how do we want to represent it
 
 			host_visitor v;
+			v.port_name = &port_name;
 			v.h = this;
 			port_ref.accept(v);
 			if(!v.ok)

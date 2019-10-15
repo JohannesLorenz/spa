@@ -304,10 +304,66 @@ ACCEPT_SPA_AUDIO_T(control_out)
 //! let the plugin assert that the types supplied in a message for a port
 //! match that port's types
 inline void assert_types_are(const char* port, const char* exp_types,
-				const char* types) noexcept(false) {
+				const char* types) noexcept(false)
+{
 	if(!detail::m_streq(exp_types, types))
 		throw invalid_args(port, types);
 }
+
+/*
+	data
+*/
+
+struct data_osc_ringbuffer : public data
+{
+	SPA_DATA
+	osc_ringbuffer value;
+	data_osc_ringbuffer(std::size_t arg_size, std::size_t max_msg = 1024) :
+		value(arg_size, max_msg) {}
+};
+
+class data_visitor : public virtual spa::data_visitor
+{
+public:
+	using spa::data_visitor::visit;
+
+/*#define SPA_MK_VISIT_AUDIO(type) \
+	SPA_MK_VISIT(control_in<type>, port_ref<const type>) \
+	SPA_MK_VISIT(control_out<type>, port_ref<type>)
+
+#define SPA_MK_VISIT_AUDIO2(type) \
+	SPA_MK_VISIT_AUDIO(type) \
+	SPA_MK_VISIT_AUDIO(unsigned type)
+
+	SPA_MK_VISIT_AUDIO(bool)
+	SPA_MK_VISIT_AUDIO2(char)
+	SPA_MK_VISIT_AUDIO2(short)
+	SPA_MK_VISIT_AUDIO2(int)
+	SPA_MK_VISIT_AUDIO2(long)
+	SPA_MK_VISIT_AUDIO2(long long)
+	SPA_MK_VISIT_AUDIO(float)
+	SPA_MK_VISIT_AUDIO(double)
+
+#undef SPA_MK_VISIT_AUDIO2
+#undef SPA_MK_VISIT_AUDIO
+
+	SPA_MK_VISIT(audio::stereo::in, port_ref_base)
+	SPA_MK_VISIT(audio::stereo::out, port_ref_base)
+
+	SPA_MK_VISIT(osc_ringbuffer_in, ringbuffer_in<char>)
+	SPA_MK_VISIT(osc_ringbuffer_out, ringbuffer_out<char>)
+
+	SPA_MK_VISIT(in, port_ref<const float>)
+	SPA_MK_VISIT(out, port_ref<float>)
+	SPA_MK_VISIT(samplerate, control_in<long>)
+	SPA_MK_VISIT(buffersize, control_in<unsigned>)
+	SPA_MK_VISIT(samplecount, control_in<unsigned>)*/
+
+	SPA_MK_VISIT(data_osc_ringbuffer, data)
+
+	virtual ~data_visitor();
+};
+
 
 } // namespace audio
 } // namespace spa

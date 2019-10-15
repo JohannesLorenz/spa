@@ -43,6 +43,7 @@
 #include <cstdarg> // only functions for varargs
 
 #include <string> // used for host functions only (see bottom of file)
+#include <vector> // only used for host data
 
 // The same counts for our own libraries!
 #include <ringbuffer/ringbuffer.h>
@@ -354,7 +355,7 @@ public:
 template<class T>
 class port_ref : public virtual port_ref_base
 {
-	T* ref;
+	T* ref = nullptr;
 public:
 	SPA_OBJECT
 
@@ -393,6 +394,32 @@ class output : public virtual port_ref_base {
 	void accept(class visitor& ) override {}
 };
 
+enum class test_mode
+{
+	none, //!< not a tester plugin
+	challenge,
+	evaluate
+};
+
+// TODO!!!! const?
+class test_mode_port : public port_ref<test_mode>, public input
+{
+	SPA_OBJECT
+};
+
+enum class test_feedback
+{
+	none, //!< not a tester plugin
+	go_on,
+	stop_ok,
+	stop_failure
+};
+
+class test_feedback_port : public port_ref<test_feedback>, public input
+{
+	SPA_OBJECT
+};
+
 /*
  * ringbuffers on the host side
  */
@@ -401,7 +428,7 @@ template<class T>
 class ringbuffer_base : public ringbuffer_t<T>
 {
 public:
-	ringbuffer_base(std::size_t size) : ringbuffer_t<T>(size) {}
+	ringbuffer_base(std::size_t arg_size) : ringbuffer_t<T>(arg_size) {}
 };
 
 //! generic ringbuffer class
@@ -436,7 +463,7 @@ public:
 		}
 	}
 
-	ringbuffer(std::size_t size) : base(size) {}
+	ringbuffer(std::size_t size_arg) : base(size_arg) {}
 };
 
 /*
@@ -550,6 +577,8 @@ public:
 	SPA_MK_VISIT_PR(float)
 	SPA_MK_VISIT_PR(double)
 
+	SPA_MK_VISIT(test_mode_port, port_ref_base)
+	SPA_MK_VISIT(test_feedback_port, port_ref_base)
 #undef SPA_MK_VISIT_PR2
 #undef SPA_MK_VISIT_PR
 
@@ -829,6 +858,85 @@ inline void assert_versions_match(const spa::descriptor& descriptor)
 	if(api_version < descriptor.least_spa_version())
 		throw spa::host_too_old(descriptor.least_spa_version());
 }
+
+//! use this in every class that you want to make visitable
+#define SPA_DATA void accept(class spa::data_visitor& v) override;
+
+//! define an accept function for a (non-template) class
+#define ACCEPT_DATA(classname, visitor_type)\
+	void classname::accept(class spa::data_visitor& v) {\
+		dynamic_cast<visitor_type&>(v).visit(*this);\
+	}
+
+//! define an accept function for a template class
+#define ACCEPT_DATA_T(classname, visitor_type)\
+	template<class T>\
+	void classname<T>::accept(class spa::data_visitor& v) {\
+		dynamic_cast<visitor_type&>(v).visit(*this);\
+	}
+
+struct data
+{
+	virtual void accept(class data_visitor& ) {}
+	virtual ~data();
+};
+
+template<class T>
+struct data_simple : public data
+{
+	SPA_DATA
+	typename std::remove_const<T>::type value;
+};
+
+template<class T>
+struct data_vector : public data
+{
+	SPA_DATA
+	std::vector<typename std::remove_const<T>::type> value;
+};
+
+template<class T>
+struct data_ringbuffer : public data
+{
+	SPA_DATA
+	ringbuffer_t<T> value;
+};
+
+class data_visitor
+{
+public:
+	virtual void visit(data& ) {}
+
+#define SPA_MK_VISIT_PR(type) \
+	SPA_MK_VISIT(data_simple<type>, data) \
+	SPA_MK_VISIT(data_simple<const type>, data) \
+	SPA_MK_VISIT(data_vector<type>, data) \
+	SPA_MK_VISIT(data_vector<const type>, data) \
+	SPA_MK_VISIT(data_ringbuffer<type>, data)
+
+#define SPA_MK_VISIT_PR2(type) SPA_MK_VISIT_PR(type) \
+	SPA_MK_VISIT_PR(unsigned type)
+
+	SPA_MK_VISIT_PR(bool)
+
+	SPA_MK_VISIT_PR2(char)
+	SPA_MK_VISIT_PR2(short)
+	SPA_MK_VISIT_PR2(int)
+	SPA_MK_VISIT_PR2(long)
+	SPA_MK_VISIT_PR2(long long)
+
+	SPA_MK_VISIT_PR(float)
+	SPA_MK_VISIT_PR(double)
+
+#undef SPA_MK_VISIT_PR2
+#undef SPA_MK_VISIT_PR
+
+	virtual ~data_visitor();
+};
+
+ACCEPT_DATA_T(data_simple, spa::data_visitor)
+ACCEPT_DATA_T(data_vector, spa::data_visitor)
+
 
 // TODO: move to host only file
 

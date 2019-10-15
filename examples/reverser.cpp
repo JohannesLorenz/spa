@@ -37,9 +37,9 @@ class reverser : public spa::plugin
 		std::size_t val;
 		float to_float() const { return static_cast<float>(val); }
 		dist_t() = default;
-		constexpr dist_t(const dist_t& other) = default;
-		constexpr dist_t operator=(const dist_t& other) { val = other.val; return *this; }
-		constexpr explicit dist_t(std::size_t val) : val(val) {}
+		dist_t(const dist_t& other) = default;
+		dist_t operator=(const dist_t& other) { val = other.val; return *this; }
+		explicit dist_t(std::size_t val) : val(val) {}
 		bool operator<(const dist_t& rhs) const { return val < rhs.val; }
 		bool operator>(const dist_t& rhs) const { return val > rhs.val; }
 		bool operator<=(const dist_t& rhs) const { return val <= rhs.val; }
@@ -229,7 +229,7 @@ class reverser : public spa::plugin
 
 		std::size_t iout = forward ? 0 : minus(play_right_pos, play_left_pos).val;
 
-		GetWritePos get_write_pos;
+		GetWritePos get_write_pos(minus(play_right_pos, play_left_pos));
 
 		// i is the ringbuffer index, starting at from_this_buf
 		// iout is the output index, starting at 0
@@ -399,12 +399,25 @@ class reverser : public spa::plugin
 		play_left_peak_pos = max(env_fade_left_peak, play_left_pos);
 
 
+
 		if(forward)
 		{
-			write_buffers(0, 1);
+			struct do_nothing {
+				do_nothing(dist_t ) {}
+				std::size_t operator()(std::size_t i) { return i; }
+			};
+
+			write_buffers<do_nothing>(play_left_pos, play_right_pos, play_left_peak_pos, play_right_peak_pos);
 		}
 		else {
 
+			struct reverse {
+				std::size_t max;
+				reverse(dist_t max) : max(max.val) {}
+				std::size_t operator()(std::size_t i) { return max - i - 1; }
+			};
+
+			write_buffers<reverse>(play_left_pos, play_right_pos, play_left_peak_pos, play_right_peak_pos);
 		}
 
 
@@ -435,7 +448,6 @@ class reverser : public spa::plugin
 
 	std::size_t bs() const { return buffer->size(); }
 
-public:
 
 
 	void run() override
