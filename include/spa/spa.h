@@ -464,7 +464,7 @@ public:
 template<>
 class ringbuffer_in<char> : public ringbuffer_in_base<char>
 {
-	uint32_t length = 0; // length of the next string
+	uint32_t length = 0, lastlength = 0; // length of the next string
 public:
 	SPA_OBJECT
 	using base = ringbuffer_in_base<char>;
@@ -484,14 +484,21 @@ public:
 					 + static_cast<uint32_t>(+rd[2] << 8)
 					 + static_cast<uint32_t>(+rd[1] << 16)
 					 + static_cast<uint32_t>(+rd[0] << 24);
-					//printf("read length array: %x%x%x%x\n",
-					//+rd[0], +rd[1], +rd[2], +rd[3]);
+					if(clength > 256)
+					    printf("read length array: %x%x%x%x\n",
+					    +rd[0], +rd[1], +rd[2], +rd[3]);
 				}
+				//assert(clength < 256); // TODO: remove me
+				//printf("read length: %d\n", +clength);
+				std::size_t rs = read_space();
+				// if anything, then at least the matching message
+				assert(rs == 0 || rs >= clength);
 				length = clength;
 			}
 
 			if(read_space())
 			{
+
 				if(length && read_space() < length)
 					throw exception("char ringbuffer "
 						"contains corrupted data");
@@ -500,13 +507,23 @@ public:
 				else
 				{
 					auto rd = read(length);
-					rd.copy(read_buffer, length);
+					bool ok = rd.copy(read_buffer, length);
+					assert(ok); // the "length" int told us it was OK
+					lastlength = length;
 					length = 0;
 				}
+				std::size_t rs = read_space();
+				// if anything, then at least one number
+				assert(rs == 0 || rs >= 4);
+
+				//printf("READ MSG: %s\n", read_buffer);
 				return true;
 			}
 			else
+			{
+				//puts("Read nothing");
 				return false;
+			}
 		}
 		else
 			return false;
