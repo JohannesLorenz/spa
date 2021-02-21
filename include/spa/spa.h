@@ -230,6 +230,7 @@ public:
 		return const_iterator{_data + len}; }
 
 	//! Return a pointer to the internal byte array, representing the data
+	//! For empty strings, this currently returns nullptr
 	const T* data() const noexcept { return _data; }
 	//! Return the number of elements
 	unsigned size() const noexcept { return len; }
