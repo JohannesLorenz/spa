@@ -43,7 +43,7 @@
 #include <cstdarg> // only functions for varargs
 
 #include <string> // used for host functions only (see bottom of file)
-
+#include <cassert>
 // The same counts for our own libraries!
 #include <ringbuffer/ringbuffer.h>
 
