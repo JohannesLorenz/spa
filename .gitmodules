@@ -1,3 +1,0 @@
-[submodule "ringbuffer"]
-	path = include/ringbuffer
-	url = https://github.com/JohannesLorenz/ringbuffer.git
