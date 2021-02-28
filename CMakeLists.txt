@@ -27,6 +27,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/spa.pc"
 
 
 # examples
+add_subdirectory(test)
 add_subdirectory(examples)
 
 print_summary_base()

@@ -44,8 +44,6 @@
 
 #include <string> // used for host functions only (see bottom of file)
 #include <cassert>
-// The same counts for our own libraries!
-#include <ringbuffer/ringbuffer.h>
 
 // fix "major" defined in GNU libraries
 #ifdef major
@@ -397,12 +395,30 @@ class output : public virtual port_ref_base {
 /*
  * ringbuffers on the host side
  */
+
+template<class T>
+class ringbuffer_in_base;
+
 //! base class for different templates of ringbuffer - don't use directly
 template<class T>
-class ringbuffer_base : public ringbuffer_t<T>
+class ringbuffer_base
 {
+	friend class ringbuffer_in_base<T>;
+
+	T* buffer;
+	std::size_t size, pos;
 public:
-	ringbuffer_base(std::size_t size) : ringbuffer_t<T>(size) {}
+	std::size_t write_space() const { return size - pos; }
+	void write(const T* data, std::size_t n) {
+		for(std::size_t i = 0; i < n; ++i)
+			buffer[pos++] = data[i];
+	}
+
+	void reset() { pos = 0; }
+
+	ringbuffer_base(std::size_t size) :
+		buffer(new T[size]), size(size), pos(0) {}
+	~ringbuffer_base() { delete[] buffer; }
 };
 
 //! generic ringbuffer class
@@ -410,7 +426,7 @@ template<class T>
 class ringbuffer : public ringbuffer_base<T>
 {
 public:
-	ringbuffer(std::size_t size) : ringbuffer_t<T>(size) {}
+	using ringbuffer_base<T>::ringbuffer_base;
 };
 
 //! char ringbuffer specialization, which supports a special write function
@@ -445,28 +461,66 @@ public:
  */
 //! base class, don't use
 template<class T>
-class ringbuffer_in_base : public ringbuffer_reader_t<T>, public virtual input
+class ringbuffer_in_base
 {
+	std::size_t size;
+	ringbuffer_base<T>* ref = nullptr;
+	std::size_t pos;
 public:
-	ringbuffer_in_base(std::size_t s) : ringbuffer_reader_t<T>(s) {}
+	struct read_sequence_t
+	{
+		const T* buf;
+		std::size_t pos, range;
+		const T& operator[](std::size_t idx) const { return buf[pos+idx]; }
+		bool copy(char* res, std::size_t n) const {
+			if(n <= range) {
+				for(std::size_t i = 0; i < n; ++i) {
+					res[i] = buf[pos + i];
+				}
+				return true;
+			}
+			else return false;
+		}
+	};
+public:
+	std::size_t read_space() const { return ref->pos - pos; }
+
+	read_sequence_t read(std::size_t n) {
+		assert(n <= read_space());
+		read_sequence_t res { ref->buffer, pos, n };
+		pos += n;
+		return res;
+	}
+
+	ringbuffer_in_base(std::size_t s) : size(s), pos(0) {}
+
+	void connect(ringbuffer_base<T>& _ref)
+	{
+		if(size != _ref.size)
+		 throw exception("connecting ringbuffers of incompatible sizes");
+		else
+		 ref = &_ref;
+	}
+
+	std::size_t get_size() const { return size; }
+
+	void reset() { pos = 0; }
 };
 
 //! ringbuffer in port for plugins to reference a host ringbuffer
 template<class T>
-class ringbuffer_in : public ringbuffer_in_base<T>
+class base_ringbuffer_in : public ringbuffer_in_base<T>
 {
 public:
-	SPA_OBJECT
 	using ringbuffer_in_base<T>::ringbuffer_in_base;
 };
 
 //! ringbuffer in port for plugins to reference a host ringbuffer
 template<>
-class ringbuffer_in<char> : public ringbuffer_in_base<char>
+class base_ringbuffer_in<char> : public ringbuffer_in_base<char>
 {
 	uint32_t length = 0, lastlength = 0; // length of the next string
 public:
-	SPA_OBJECT
 	using base = ringbuffer_in_base<char>;
 	using base::ringbuffer_in_base;
 
@@ -530,9 +584,17 @@ public:
 	}
 };
 
+template<class T>
+class ringbuffer_in : public base_ringbuffer_in<T>, public input
+{
+public:
+	SPA_OBJECT
+	using base_ringbuffer_in<T>::base_ringbuffer_in;
+};
+
 //! ringbuffer out port for plugins to reference a host ringbuffer
 template<class T>
-class ringbuffer_out : public virtual output
+class ringbuffer_out : public output
 {
 public:
 	SPA_OBJECT

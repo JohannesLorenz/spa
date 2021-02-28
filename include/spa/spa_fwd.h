@@ -37,7 +37,6 @@ namespace spa
 	template<> class ringbuffer<char>;
 
 	template<class T> class ringbuffer_in;
-	template<> class ringbuffer_in<char>;
 
 	template<class T> class ringbuffer_out;
 

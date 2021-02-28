@@ -17,7 +17,6 @@ descriptor::~descriptor() {}
  */
 
 ACCEPT(port_ref_base, spa::visitor)
-ACCEPT(ringbuffer_in<char>, spa::visitor)
 
 }
 

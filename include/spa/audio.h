@@ -35,6 +35,7 @@
 #ifndef SPA_AUDIO_H
 #define SPA_AUDIO_H
 
+#include <limits>
 #include <rtosc/pseudo-rtosc.h>
 
 #include "spa.h"
